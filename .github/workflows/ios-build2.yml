@@ -29,10 +29,12 @@ jobs:
           flutter --version
           dart --version
 
+      # Override pubspec version if the caller supplied one
       - name: Override app version (optional)
         if: ${{ github.event.inputs.version != '' }}
         run: |
           VERSION="${{ github.event.inputs.version }}"
+          # Replace the "version:" line in pubspec.yaml
           sed -i '' "s/^version:.*/version: ${VERSION}/" pubspec.yaml
           echo "Version set to: ${VERSION}"
           grep '^version:' pubspec.yaml
@@ -43,25 +45,17 @@ jobs:
       - name: Run code generation (build_runner)
         run: dart run build_runner build --delete-conflicting-outputs
 
-      # 关键修正：生成未签名的 .app，再手动打包为 .ipa
-      - name: Build unsigned .app bundle
-        run: flutter build ios --release --no-codesign
+      - name: Build unsigned IPA
+        run: flutter build ipa --no-codesign --release
 
-      - name: Package as unsigned IPA
-        run: |
-          mkdir -p build/ios/ipa/Payload
-          cp -R build/ios/iphoneos/Runner.app build/ios/ipa/Payload/
-          cd build/ios/ipa
-          zip -qr Runner.ipa Payload
-          cd -
-          echo "Unsigned IPA created at build/ios/ipa/Runner.ipa"
-
+      # The unsigned IPA produced by --no-codesign lives inside the XCArchive.
+      # Flutter also copies it to build/ios/ipa/*.ipa.
       - name: Locate IPA file
         id: find_ipa
         run: |
           IPA_PATH=$(find build/ios/ipa -name "*.ipa" | head -n 1)
           if [ -z "$IPA_PATH" ]; then
-            echo "No .ipa found — listing build/ios/ for debug:"
+            echo "No .ipa found under build/ios/ipa — listing build/ios/ for debug:"
             find build/ios -maxdepth 3 -type f
             exit 1
           fi
