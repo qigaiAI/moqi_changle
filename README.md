@@ -15,7 +15,7 @@
 - Riverpod 状态管理
 - Supabase 实时后端
 
-## 配置 Supabase
+## 配置  Supabase
 
 1. 在 Supabase 中执行 `../supabase_schema.sql` 创建数据库表
 2. 配置已写入 `lib/config/supabase_config.dart`
