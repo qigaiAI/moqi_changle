@@ -1,0 +1,71 @@
+name: Build iOS IPA (Unsigned)
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'App version (e.g. 1.0.1+2). Leave empty to use pubspec.yaml version.'
+        required: false
+        default: ''
+
+jobs:
+  build-ios:
+    name: Build unsigned IPA
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter 3.35.5
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.35.5'
+          channel: 'stable'
+          cache: true
+
+      - name: Print Flutter & Dart version
+        run: |
+          flutter --version
+          dart --version
+
+      # Override pubspec version if the caller supplied one
+      - name: Override app version (optional)
+        if: ${{ github.event.inputs.version != '' }}
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          # Replace the "version:" line in pubspec.yaml
+          sed -i '' "s/^version:.*/version: ${VERSION}/" pubspec.yaml
+          echo "Version set to: ${VERSION}"
+          grep '^version:' pubspec.yaml
+
+      - name: Install Flutter dependencies
+        run: flutter pub get
+
+      - name: Run code generation (build_runner)
+        run: dart run build_runner build --delete-conflicting-outputs
+
+      - name: Build unsigned IPA
+        run: flutter build ipa --no-codesign --release
+
+      # The unsigned IPA produced by --no-codesign lives inside the XCArchive.
+      # Flutter also copies it to build/ios/ipa/*.ipa.
+      - name: Locate IPA file
+        id: find_ipa
+        run: |
+          IPA_PATH=$(find build/ios/ipa -name "*.ipa" | head -n 1)
+          if [ -z "$IPA_PATH" ]; then
+            echo "No .ipa found under build/ios/ipa — listing build/ios/ for debug:"
+            find build/ios -maxdepth 3 -type f
+            exit 1
+          fi
+          echo "ipa_path=${IPA_PATH}" >> "$GITHUB_OUTPUT"
+          echo "Found IPA: ${IPA_PATH}"
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: moqi_challenge-ios-unsigned-${{ github.run_number }}
+          path: ${{ steps.find_ipa.outputs.ipa_path }}
+          retention-days: 30
+          if-no-files-found: error
